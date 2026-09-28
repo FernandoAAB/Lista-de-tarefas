@@ -1,3 +1,4 @@
+import ctypes
 import tkinter as tk
 from tkinter import ttk, font, messagebox
 from tkinter import PhotoImage
@@ -49,10 +50,40 @@ def escolher_fonte():
             return candidata
     return "TkDefaultFont"
 
+def colorir_barra_titulo(janela, cor_fundo=COR_BG_PRINCIPAL, cor_texto=COR_TEXTO):
+    """Pinta a barra de título no Windows (cor exata só no Windows 11)."""
+    if sys.platform != "win32":
+        return
+
+    def hex_para_colorref(cor_hex):
+        cor_hex = cor_hex.lstrip("#")
+        r, g, b = (int(cor_hex[i:i + 2], 16) for i in (0, 2, 4))
+        return (b << 16) | (g << 8) | r  # o Windows usa a ordem BGR
+
+    try:
+        janela.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(janela.winfo_id())
+        definir = ctypes.windll.dwmapi.DwmSetWindowAttribute
+
+        # Barra escura (Windows 10 20H1+ e Windows 11)
+        escuro = ctypes.c_int(1)
+        definir(hwnd, 20, ctypes.byref(escuro), ctypes.sizeof(escuro))
+
+        # Cor da barra, do texto e da borda (Windows 11)
+        for atributo, cor in ((35, cor_fundo), (36, cor_texto), (34, cor_fundo)):
+            valor = ctypes.c_int(hex_para_colorref(cor))
+            definir(hwnd, atributo, ctypes.byref(valor), ctypes.sizeof(valor))
+    except Exception:
+        pass  # se falhar, o app segue com a barra padrão
 
 class AppTarefas:
     def __init__(self):
-        self.janela = tk.Tk()
+        if sys.platform == "win32":
+            try:
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("tarefas.diarias.app")
+            except Exception:
+                pass
+            self.janela = tk.Tk()
         self.janela.title("Tarefas Diárias")
         self.janela.configure(bg=COR_BG_PRINCIPAL)
         self.janela.geometry("520x640")
@@ -68,18 +99,16 @@ class AppTarefas:
         self._carregar_icones_acao()
         self._montar_interface()
         self._carregar_tarefas()
-
+        self.janela.after(50, lambda: colorir_barra_titulo(self.janela))
         self.janela.protocol("WM_DELETE_WINDOW", self._fechar_aplicacao)
 
     
     # Ícones
     
     def _definir_icone_janela(self):
-        caminho_icone = os.path.join(PASTA_ICONS, "app.png")
+        caminho_icone = os.path.join(PASTA_ICONS, "icone.ico")
         try:
-            icone = PhotoImage(file=caminho_icone)
-            self.janela.iconphoto(True, icone)
-            self._icone_janela_ref = icone  # evitar garbage collection
+            self.janela.iconbitmap(caminho_icone)
         except Exception:
             pass  # segue sem ícone customizado, não é crítico
 
